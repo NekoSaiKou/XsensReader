@@ -47,6 +47,9 @@ class UART:
         self.ndx = 0
         self.receivedBytes = ['' for i in range(self.len)]
 
+        self.MTData2StartIDX = 4
+        self.TypeHex = [b'\x08',b'\x10',b'\x20',b'\x30',b'\x40',b'\x50']
+
     def getmeasure(self):
         recvINprogress = False 
         recvINprogress2 = False
@@ -101,39 +104,58 @@ class UART:
                     self.newData = True
 
     def parseData(self):
-        # -----QUAT = 0x2010-----
-        # print(self.receivedBytes)
-        if self.receivedBytes[16] == b'\x20' and self.receivedBytes[17] == b'\x10' :
-            for i in range(16):
-                self.data_q[i] = self.receivedBytes[19+i]      #進行資料的讀取
 
-            #-----LINK BYTES-----
-            self.quat_temp[0] = self.data_q[3] + self.data_q[2]   + self.data_q[1] + self.data_q[0]
-            self.quat_temp[1] = self.data_q[7] + self.data_q[6]   + self.data_q[5] + self.data_q[4]
-            self.quat_temp[2] = self.data_q[11] + self.data_q[10]  + self.data_q[9] + self.data_q[8]
-            self.quat_temp[3] = self.data_q[15] + self.data_q[14]  + self.data_q[13] + self.data_q[12]
-            
-            #-----Transfer to HEX -----
-            self.quat_temp_bytesToHex[0] = binascii.b2a_hex(self.quat_temp[0])
-            self.quat_temp_bytesToHex[1] = binascii.b2a_hex(self.quat_temp[1])
-            self.quat_temp_bytesToHex[2] = binascii.b2a_hex(self.quat_temp[2])
-            self.quat_temp_bytesToHex[3] = binascii.b2a_hex(self.quat_temp[3])
-            # print(self.quat_temp_bytesToHex[2])
-            # print('hahaha',self.quat_temp_bytesToHex)
+        CurrentIDX = self.MTData2StartIDX
+        while(CurrentIDX < len(self.receivedBytes)):
+            if self.receivedBytes[CurrentIDX] in self.TypeHex:
 
-            #-----use ascii decode-----
-            self.quat_temp_bytesToASCII[0] = self.quat_temp_bytesToHex[0].decode('ascii')
-            self.quat_temp_bytesToASCII[1] = self.quat_temp_bytesToHex[1].decode('ascii')
-            self.quat_temp_bytesToASCII[2] = self.quat_temp_bytesToHex[2].decode('ascii')
-            self.quat_temp_bytesToASCII[3] = self.quat_temp_bytesToHex[3].decode('ascii')
-            # print('hahaha',self.quat_temp_bytesToASCII)
+                MtdataType = self.receivedBytes[CurrentIDX]
+                MtdataFormat = self.receivedBytes[CurrentIDX+1]
+                MtdataLength = int.from_bytes(self.receivedBytes[CurrentIDX+2], 'big')
+                MtdataMessageStart = CurrentIDX+3
 
-            #-----unpack data to float-----
-            self.quat[0] = struct.unpack('<f', bytes.fromhex(self.quat_temp_bytesToASCII[0]))[0]
-            self.quat[1] = struct.unpack('<f', bytes.fromhex(self.quat_temp_bytesToASCII[1]))[0]
-            self.quat[2] = struct.unpack('<f', bytes.fromhex(self.quat_temp_bytesToASCII[2]))[0]
-            self.quat[3] = struct.unpack('<f', bytes.fromhex(self.quat_temp_bytesToASCII[3]))[0]
-            # print(self.quat)
+                if MtdataType == b'\x08':
+                    pass
+                elif MtdataType == b'\x10':
+                    pass
+                elif MtdataType == b'\x20' and MtdataFormat == b'\x10' :
+                    for i in range(16):
+                        self.data_q[i] = self.receivedBytes[MtdataMessageStart+i]      #進行資料的讀取
+
+                    #-----LINK BYTES-----
+                    self.quat_temp[0] = self.data_q[3] + self.data_q[2]   + self.data_q[1] + self.data_q[0]
+                    self.quat_temp[1] = self.data_q[7] + self.data_q[6]   + self.data_q[5] + self.data_q[4]
+                    self.quat_temp[2] = self.data_q[11] + self.data_q[10]  + self.data_q[9] + self.data_q[8]
+                    self.quat_temp[3] = self.data_q[15] + self.data_q[14]  + self.data_q[13] + self.data_q[12]
+                    
+                    #-----Transfer to HEX -----
+                    self.quat_temp_bytesToHex[0] = binascii.b2a_hex(self.quat_temp[0])
+                    self.quat_temp_bytesToHex[1] = binascii.b2a_hex(self.quat_temp[1])
+                    self.quat_temp_bytesToHex[2] = binascii.b2a_hex(self.quat_temp[2])
+                    self.quat_temp_bytesToHex[3] = binascii.b2a_hex(self.quat_temp[3])
+                    # print(self.quat_temp_bytesToHex[2])
+                    # print('hahaha',self.quat_temp_bytesToHex)
+
+                    #-----use ascii decode-----
+                    self.quat_temp_bytesToASCII[0] = self.quat_temp_bytesToHex[0].decode('ascii')
+                    self.quat_temp_bytesToASCII[1] = self.quat_temp_bytesToHex[1].decode('ascii')
+                    self.quat_temp_bytesToASCII[2] = self.quat_temp_bytesToHex[2].decode('ascii')
+                    self.quat_temp_bytesToASCII[3] = self.quat_temp_bytesToHex[3].decode('ascii')
+                    # print('hahaha',self.quat_temp_bytesToASCII)
+
+                    #-----unpack data to float-----
+                    self.quat[0] = struct.unpack('<f', bytes.fromhex(self.quat_temp_bytesToASCII[0]))[0]
+                    self.quat[1] = struct.unpack('<f', bytes.fromhex(self.quat_temp_bytesToASCII[1]))[0]
+                    self.quat[2] = struct.unpack('<f', bytes.fromhex(self.quat_temp_bytesToASCII[2]))[0]
+                    self.quat[3] = struct.unpack('<f', bytes.fromhex(self.quat_temp_bytesToASCII[3]))[0]
+                elif MtdataType == b'\x30':
+                    pass
+                elif MtdataType == b'\x40':
+                    pass
+                elif MtdataType == b'\x50':
+                    pass
+
+                CurrentIDX = CurrentIDX + 2 + MtdataLength + 1  # Get Next Message Start Index
 
 #Let Quat to euler angle
     def QuatToEuler (self):  
