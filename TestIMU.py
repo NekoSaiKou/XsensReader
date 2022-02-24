@@ -4,7 +4,7 @@ import time
 from IMU import *
 
 if __name__ == "__main__":
-    xsens = UART()     # initial the imu class
+    xsens = Xsens(ShowError=False)     # initial the imu class
     # Pin Setup:
 
     while(True):

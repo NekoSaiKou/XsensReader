@@ -27,9 +27,11 @@ startbyte = b'\xfa'                               #set the first check point
 secondbyte = b'\xff'                          #set the second check point
 mtdata2 = b'\x36'
 
-#set uart class
-class UART:
-    def __init__(self):
+#set Xsens class
+class Xsens:
+    def __init__(self, ShowError=False):
+        self.ShowError = ShowError
+
         self.newData = False   #確認是否有獲取資料
         
         # -------四方位角得紀錄及換算變數-------
@@ -51,8 +53,6 @@ class UART:
         self.TypeHex = [b'\x08',b'\x10',b'\x20',b'\x30',b'\x40',b'\x50',b'\x70',b'\x80',b'\xA0',b'\xC0',b'\xD0',b'\xE0']
 
     def getmeasure(self):
-        recvINprogress = False 
-        recvINprogress2 = False
         next_idx = 0
         while serial_port.in_waiting > 0 and self.newData == False:
             rc = serial_port.read()
@@ -64,7 +64,8 @@ class UART:
                     next_idx = 1
                 else:
                     next_idx = 0
-                    print("Error read 1st byte, continue...")
+                    if(self.ShowError):
+                        print("Error read 1st byte, continue...")
             # Check if second byte match Xsens Bus Identifier (0xFF)
             elif next_idx == 1:
                 if rc == secondbyte:
@@ -72,7 +73,8 @@ class UART:
                     next_idx = 2
                 else:
                     next_idx = 0
-                    print("Error read 2nd byte, continue...")
+                    if(self.ShowError):
+                        print("Error read 2nd byte, continue...")
             # Check if third byte is mtdata2
             elif next_idx == 2:
                 if rc == mtdata2:
@@ -80,7 +82,8 @@ class UART:
                     next_idx = 3
                 else:
                     next_idx = 0
-                    print("Error read 3rd byte, continue...")      
+                    if(self.ShowError):
+                        print("Error read 3rd byte, continue...")    
             elif next_idx == 3:
                 # First 4 bytes + Last Checksum Byte = 5
                 # 4th byte indicate the length of data field
@@ -93,6 +96,9 @@ class UART:
                 if(len(self.receivedBytes) < self.len):
                     extend_length = self.len - len(self.receivedBytes)
                     self.receivedBytes.extend([''] * extend_length)
+                elif(len(self.receivedBytes) > self.len):
+                    delete_length = len(self.receivedBytes) - self.len
+                    del self.receivedBytes[-delete_length:]
             # If first three bytes checked, start reading
             else:
                 if next_idx < self.len:
@@ -106,6 +112,7 @@ class UART:
 
     def parseData(self):
         CurrentIDX = self.MTData2StartIDX
+
         while(CurrentIDX < len(self.receivedBytes)-1):
             # Check if valid header
             if self.receivedBytes[CurrentIDX] in self.TypeHex:
