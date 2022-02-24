@@ -45,10 +45,10 @@ class UART:
 
         self.len = 5    #確認資料長度
         self.ndx = 0
-        self.receivedBytes = ['' for i in range(self.len)]
+        self.receivedBytes = ['']*self.len
 
         self.MTData2StartIDX = 4
-        self.TypeHex = [b'\x08',b'\x10',b'\x20',b'\x30',b'\x40',b'\x50']
+        self.TypeHex = [b'\x08',b'\x10',b'\x20',b'\x30',b'\x40',b'\x50',b'\x70',b'\x80',b'\xA0',b'\xC0',b'\xD0',b'\xE0']
 
     def getmeasure(self):
         recvINprogress = False 
@@ -91,7 +91,8 @@ class UART:
 
                 # Extend receivedBytes
                 if(len(self.receivedBytes) < self.len):
-                    self.receivedBytes.extend([''] * len_datafield)
+                    extend_length = self.len - len(self.receivedBytes)
+                    self.receivedBytes.extend([''] * extend_length)
             # If first three bytes checked, start reading
             else:
                 if next_idx < self.len:
@@ -104,11 +105,10 @@ class UART:
                     self.newData = True
 
     def parseData(self):
-
         CurrentIDX = self.MTData2StartIDX
-        while(CurrentIDX < len(self.receivedBytes)):
+        while(CurrentIDX < len(self.receivedBytes)-1):
+            # Check if valid header
             if self.receivedBytes[CurrentIDX] in self.TypeHex:
-
                 MtdataType = self.receivedBytes[CurrentIDX]
                 MtdataFormat = self.receivedBytes[CurrentIDX+1]
                 MtdataLength = int.from_bytes(self.receivedBytes[CurrentIDX+2], 'big')
