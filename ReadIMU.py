@@ -5,12 +5,8 @@ from IMU import *
 
 if __name__ == "__main__":
     xsens = Xsens(ShowError=False)     # initial the imu class
-    # Pin Setup:
 
     while(True):
-
-        #record imu from this mission
-        imu_data = open('./imu_data_.txt','w')
 
         time.sleep(0.1)
 
