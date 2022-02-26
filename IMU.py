@@ -91,7 +91,7 @@ class Xsens:
                 self.len = len_datafield + 5
                 self.receivedBytes[3] = rc
                 next_idx = 4
-                print(self.len)
+
                 # Extend receivedBytes
                 if(len(self.receivedBytes) < self.len):
                     extend_length = self.len - len(self.receivedBytes)
