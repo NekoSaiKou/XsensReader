@@ -6,19 +6,25 @@ from IMU import *
 if __name__ == "__main__":
     xsens = Xsens(ShowError=False)     # initial the imu class
 
+    # xsens.ConnectWithSerialNumber("DB5SGYLL")
+    xsens.ConnectWithDeviceName("/dev/ttyUSB0")
+
+    time.sleep(0.1)
+
     while(True):
+        
+        xsens.GetMeasure()
 
-        time.sleep(0.1)
+        if xsens.NewDataAvailable() == True:
+            xsens.MarkDataOld()
 
-        while(True):
-            xsens.getmeasure()
-            if xsens.newData == True:
-                xsens.newData = False
-
-                xsens.QuatToEuler ()
-                # print(xsens.XsensTime*1e-4)
-                s = ""
-                s += str(time.time()) + " |Roll: %.2f" % (xsens.euler[0,0] * 180 / math.pi) + ", Pitch: %.2f" % (xsens.euler[0,1] * 180 / math.pi) + ", Yaw: %.2f " % (xsens.euler[0,2] * 180 / math.pi )
-                print(s)
-                # imu_data.write("%s\n" % s)   #store imu_data
+            xsens.QuatToEuler ()
+            # print(xsens.XsensTime*1e-4)
+            s = ""
+            s += str(time.time()) + " |Roll: %.2f" % (xsens.euler[0,0] * 180 / math.pi) + ", Pitch: %.2f" % (xsens.euler[0,1] * 180 / math.pi) + ", Yaw: %.2f " % (xsens.euler[0,2] * 180 / math.pi )
+            print(s)
+            # imu_data.write("%s\n" % s)   #store imu_data
+        else:
+            # print("No data")
+            pass
 

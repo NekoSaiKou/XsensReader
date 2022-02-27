@@ -1,66 +1,143 @@
-from configparser import SectionProxy
-import time
-import serial
-import numpy
+
 import math
-import binascii
+import numpy
+import serial
+from serial.tools import list_ports
 import struct
-import os
-import sys
-import struct
-
-path = 'mission_number/num_of_mission.txt'                          # to get the nums of round
-
-#set the detail of serial
-serial_port = serial.Serial(
-    port="/dev/ttyUSB0",                    #set the port
-    baudrate=115200,                           #set the baudrate
-    bytesize=serial.EIGHTBITS,
-    parity=serial.PARITY_NONE,
-    stopbits=serial.STOPBITS_ONE,
-)
-
-# Wait a second to let the port initialize
-time.sleep(0.1)
-
-startbyte = b'\xfa'                               #set the first check point
-secondbyte = b'\xff'                          #set the second check point
-mtdata2 = b'\x36'
+import threading
 
 #set Xsens class
 class Xsens:
     def __init__(self, ShowError=False):
         self.ShowError = ShowError
 
-        self.newData = False   #確認是否有獲取資料
-        
-        # -------四方位角得紀錄及換算變數-------
-        self.quat = numpy.zeros(shape=(4), dtype='float_')
-        self.quat_temp = ['' for i in range(4)]
-        self.quat_temp_bytesToHex = ['' for i in range(4)] 
-        self.quat_temp_bytesToASCII = ['' for i in range(4)]
+        # Serial Port Setting
+        self.serial_port = None
+        self.baudrate = 115200
+        self.device_name = ""
+        self.device_serial_number = ""
 
-        self.data_q =  ['' for i in range(16)]
-        self.datadt =  ['' for i in range(4)]
+        self.newData = False
+
+        # Data Processing
+        self.quat = numpy.zeros(shape=(4), dtype='float_')
+        self.quat_temp = ['']*4
 
         self.euler = numpy.zeros(shape=(1,3), dtype='float_')
 
-        self.len = 5    #確認資料長度
-        self.ndx = 0
+        self.len = 5    # Data length without MTData2 data field (Preamble, BID, MTData, LEN and Checksum)
         self.receivedBytes = ['']*self.len
 
-        self.MTData2StartIDX = 4
+        # Threading
+        self.data_lock = threading.Lock()
+        self.new_data_lock = threading.Lock()
+
+        # MTData2 content
+        self.startbyte = b'\xfa'                           #set the first check point
+        self.secondbyte = b'\xff'                          #set the second check point
+        self.mtdata2 = b'\x36'
         self.TypeHex = [b'\x08',b'\x10',b'\x20',b'\x30',b'\x40',b'\x50',b'\x70',b'\x80',b'\xA0',b'\xC0',b'\xD0',b'\xE0']
+        self.MTData2StartIDX = 4
 
-    def getmeasure(self):
+    def ConnectWithDeviceName(self, target_port):
+        device_list = list_ports.comports()
+        connect = False
+        for device in device_list:
+            if device.manufacturer != "Xsens" or device.product != "Motion Tracker Dev. Board" or device.device != target_port:
+                continue
+            else:
+                try:
+                    self.serial_port = serial.Serial(
+                        port=target_port, 
+                        baudrate=self.baudrate, 
+                        bytesize=serial.EIGHTBITS,
+                        parity=serial.PARITY_NONE,
+                        stopbits=serial.STOPBITS_ONE)
+                    connect = True
+                    self.device_name = device.device
+                    self.device_serial_number = device.serial_number
+                    print("Connect to ", device.device, " Serial Number: ", device.serial_number)
+                except (ValueError, serial.SerialException) as e:
+                    print("[IMU] Connect to ", target_port, " Error Occurred!!!")
+                    print(e)
+                    connect = False
+                break
+
+        if not connect:
+            print("[IMU] Connect to ", target_port, " Failed!!!")
+
+        return connect
+
+    def ConnectWithSerialNumber(self, serial_number):
+        device_list = list_ports.comports()
+        connect = False
+        for device in device_list:
+            if device.manufacturer != "Xsens" or device.product != "Motion Tracker Dev. Board" or device.serial_number != serial_number:
+                continue
+            else:
+                try:
+                    target_port = device.device
+                    self.serial_port = serial.Serial(
+                        port=target_port, 
+                        baudrate=self.baudrate, 
+                        bytesize=serial.EIGHTBITS,
+                        parity=serial.PARITY_NONE,
+                        stopbits=serial.STOPBITS_ONE)
+                    connect = True
+                    self.device_name = device.device
+                    self.device_serial_number = device.serial_number
+                    print("Connect to ", device.device, " Serial Number: ", device.serial_number)
+                except (ValueError, serial.SerialException) as e:
+                    print("[IMU] Connect to ", target_port, " Error Occurred!!!")
+                    print(e)
+                    connect = False
+                break
+
+        if not connect:
+            print("[IMU] Connect to device: ", serial_number, " Failed!!!")
+
+        return connect
+
+    def NewDataAvailable(self):
+        ##
+        # If new data is available
+
+        self.new_data_lock.acquire()
+        new_data_available = self.newData
+        self.new_data_lock.release()
+        return new_data_available
+
+    def MarkDataOld(self):
+        ##
+        # Mark Data as Old, for user
+
+        self.new_data_lock.acquire()
+        self.newData = False
+        self.new_data_lock.release()
+
+    def MarkDataNew(self):
+        ##
+        # Mark Data as New if a complete MTData2 is received
+
+        self.new_data_lock.acquire()
+        self.newData = True
+        self.new_data_lock.release()
+
+    def GetMeasure(self):
+        ##
+        # Read until a complete MTData2 is gotten from serial port or Return if buffer empty
+        # This function should be called frequently to prevent receiving too OLD data
+
         next_idx = 0
-        while serial_port.in_waiting > 0 and self.newData == False:
-            rc = serial_port.read()
 
+        self.data_lock.acquire()
+
+        while self.serial_port.in_waiting > 0:
+            rc = self.serial_port.read()
             # Check if first byte match Xsens Preamble byte (0xFA)
             if next_idx == 0:
-                if rc == startbyte:
-                    self.receivedBytes[0] = startbyte
+                if rc == self.startbyte:
+                    self.receivedBytes[0] = self.startbyte
                     next_idx = 1
                 else:
                     next_idx = 0
@@ -68,8 +145,8 @@ class Xsens:
                         print("Error read 1st byte, continue...")
             # Check if second byte match Xsens Bus Identifier (0xFF)
             elif next_idx == 1:
-                if rc == secondbyte:
-                    self.receivedBytes[1] = secondbyte
+                if rc == self.secondbyte:
+                    self.receivedBytes[1] = self.secondbyte
                     next_idx = 2
                 else:
                     next_idx = 0
@@ -77,8 +154,8 @@ class Xsens:
                         print("Error read 2nd byte, continue...")
             # Check if third byte is mtdata2
             elif next_idx == 2:
-                if rc == mtdata2:
-                    self.receivedBytes[2] = mtdata2
+                if rc == self.mtdata2:
+                    self.receivedBytes[2] = self.mtdata2
                     next_idx = 3
                 else:
                     next_idx = 0
@@ -92,7 +169,7 @@ class Xsens:
                 self.receivedBytes[3] = rc
                 next_idx = 4
 
-                # Extend receivedBytes
+                # Extend or Delete receivedBytes
                 if(len(self.receivedBytes) < self.len):
                     extend_length = self.len - len(self.receivedBytes)
                     self.receivedBytes.extend([''] * extend_length)
@@ -108,11 +185,15 @@ class Xsens:
                 
                 if next_idx == self.len:
                     next_idx = 0
-                    self.newData = True
+                    self.MarkDataNew()
+                    break
+        
+        self.data_lock.release()
 
-    def parseData(self):
+    def ParseData(self):
         CurrentIDX = self.MTData2StartIDX
 
+        self.data_lock.acquire()
         while(CurrentIDX < len(self.receivedBytes)-1):
             # Check if valid header
             if self.receivedBytes[CurrentIDX] in self.TypeHex:
@@ -126,47 +207,45 @@ class Xsens:
                 elif MtdataType == b'\x10':
                     pass
                 elif MtdataType == b'\x20' and MtdataFormat == b'\x10' :
-                    for i in range(16):
-                        self.data_q[i] = self.receivedBytes[MtdataMessageStart+i]      #進行資料的讀取
-
                     #-----LINK BYTES-----
-                    self.quat_temp[0] = self.data_q[3] + self.data_q[2]   + self.data_q[1] + self.data_q[0]
-                    self.quat_temp[1] = self.data_q[7] + self.data_q[6]   + self.data_q[5] + self.data_q[4]
-                    self.quat_temp[2] = self.data_q[11] + self.data_q[10]  + self.data_q[9] + self.data_q[8]
-                    self.quat_temp[3] = self.data_q[15] + self.data_q[14]  + self.data_q[13] + self.data_q[12]
-                    
-                    #-----Transfer to HEX -----
-                    self.quat_temp_bytesToHex[0] = binascii.b2a_hex(self.quat_temp[0])
-                    self.quat_temp_bytesToHex[1] = binascii.b2a_hex(self.quat_temp[1])
-                    self.quat_temp_bytesToHex[2] = binascii.b2a_hex(self.quat_temp[2])
-                    self.quat_temp_bytesToHex[3] = binascii.b2a_hex(self.quat_temp[3])
-                    # print(self.quat_temp_bytesToHex[2])
-                    # print('hahaha',self.quat_temp_bytesToHex)
-
-                    #-----use ascii decode-----
-                    self.quat_temp_bytesToASCII[0] = self.quat_temp_bytesToHex[0].decode('ascii')
-                    self.quat_temp_bytesToASCII[1] = self.quat_temp_bytesToHex[1].decode('ascii')
-                    self.quat_temp_bytesToASCII[2] = self.quat_temp_bytesToHex[2].decode('ascii')
-                    self.quat_temp_bytesToASCII[3] = self.quat_temp_bytesToHex[3].decode('ascii')
-                    # print('hahaha',self.quat_temp_bytesToASCII)
-
+                    Quat_Idx = MtdataMessageStart
+                    self.quat_temp[0] = b''.join(self.receivedBytes[Quat_Idx+3  : Quat_Idx-1:-1])   # 3  2  1  0
+                    self.quat_temp[1] = b''.join(self.receivedBytes[Quat_Idx+7  : Quat_Idx+3:-1])   # 7  6  5  4
+                    self.quat_temp[2] = b''.join(self.receivedBytes[Quat_Idx+11 : Quat_Idx+7:-1])   # 11 10 9  8
+                    self.quat_temp[3] = b''.join(self.receivedBytes[Quat_Idx+15 : Quat_Idx+11:-1])  # 15 14 13 12
                     #-----unpack data to float-----
-                    self.quat[0] = struct.unpack('<f', bytes.fromhex(self.quat_temp_bytesToASCII[0]))[0]
-                    self.quat[1] = struct.unpack('<f', bytes.fromhex(self.quat_temp_bytesToASCII[1]))[0]
-                    self.quat[2] = struct.unpack('<f', bytes.fromhex(self.quat_temp_bytesToASCII[2]))[0]
-                    self.quat[3] = struct.unpack('<f', bytes.fromhex(self.quat_temp_bytesToASCII[3]))[0]
+                    self.quat[0] = struct.unpack('<f', self.quat_temp[0])[0]
+                    self.quat[1] = struct.unpack('<f', self.quat_temp[1])[0]
+                    self.quat[2] = struct.unpack('<f', self.quat_temp[2])[0]
+                    self.quat[3] = struct.unpack('<f', self.quat_temp[3])[0]
                 elif MtdataType == b'\x30':
                     pass
                 elif MtdataType == b'\x40':
                     pass
                 elif MtdataType == b'\x50':
                     pass
+                elif MtdataType == b'\x70':
+                    pass
+                elif MtdataType == b'\x80':
+                    pass
+                elif MtdataType == b'\xA0':
+                    pass
+                elif MtdataType == b'\xC0':
+                    pass
+                elif MtdataType == b'\xD0':
+                    pass
+                elif MtdataType == b'\xE0':
+                    pass
+                else:
+                    pass
 
                 CurrentIDX = CurrentIDX + 2 + MtdataLength + 1  # Get Next Message Start Index
+            else:
+                pass
+        self.data_lock.release()
 
-#Let Quat to euler angle
     def QuatToEuler (self):  
-        self.parseData()
+        self.ParseData()
         w = self.quat[0]
         x = self.quat[1]
         y = self.quat[2]
@@ -187,19 +266,3 @@ class Xsens:
         siny_cosp = 2 * (w * z + x * y)
         cosy_cosp = 1 - 2 * (y * y + z * z)
         self.euler[0,2] = math.atan2(siny_cosp, cosy_cosp)
-
-    # 讀取目前任務編碼並回傳
-    def read_mission_times(self):
-    #get how many times we collect data
-        f_imu = open(path, 'r')
-        text = []
-        for line in f_imu:
-            text.append(line)
-        num_of_mission = int(text[0])
-        num_of_mission = num_of_mission + 1  #set nums of mission
-        f_imu.close()
-        #record nums of mission
-        f_imu = open(path, 'w')
-        f_imu.write(str(num_of_mission))
-        f_imu.close()
-        return  num_of_mission
