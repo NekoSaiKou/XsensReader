@@ -1,3 +1,4 @@
 rospkg
 pyserial
+Cython
 numpy
