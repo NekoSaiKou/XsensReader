@@ -1,0 +1,15 @@
+<launch>
+
+    <arg name="imu_SerialID" default="DB5SGYJS" />
+    <arg name="imu_SerialPort" default="/dev/ttyUSB0" />
+    <arg name="imu_Topic" default="/Quaternion" />
+    <arg name="node_name_arg" default="XSens"/>
+
+    <!-- Launch XSens node -->
+    <node name="$(arg node_name_arg)" pkg="xsens_sdk" type="ReadIMU_ros.py" output="screen">
+        <param name = "serial_number" value = "$(arg imu_SerialID)"/>
+        <param name = "serial_port" value = "$(arg imu_SerialPort)"/>
+        <param name = "quat_topic" value = "$(arg imu_Topic)"/>
+    </node>
+
+</launch>

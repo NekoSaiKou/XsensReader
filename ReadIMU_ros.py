@@ -18,8 +18,8 @@ def IMU_reader(xsens):
             s += str(time.time()) + " |Roll: %.2f" % (xsens.euler[0,0] * 180 / math.pi) + ", Pitch: %.2f" % (xsens.euler[0,1] * 180 / math.pi) + ", Yaw: %.2f " % (xsens.euler[0,2] * 180 / math.pi )
             print(s)
 
-def publisher(xsens):
-    quat_pub = rospy.Publisher('Quaternion', QuaternionStamped, queue_size=1)
+def publisher(xsens, quat_topic):
+    quat_pub = rospy.Publisher(quat_topic, QuaternionStamped, queue_size=1)
     rate = rospy.Rate(30) # 30hz
 
     while not rospy.is_shutdown():
@@ -37,32 +37,47 @@ if __name__ == "__main__":
 
     rospy.init_node('XsensSDK', anonymous=True)
 
-    use_serial_number = True
     serial_number = ""
     serial_port = ""
+    quat_topic = "/Quaternion"
 
+    use_serial_number = False
+    use_serial_port = False
     if rospy.has_param('~serial_number'):
         serial_number = rospy.get_param('~serial_number')
-    elif rospy.has_param('~serial_port'):
+        if not serial_number == "disable":
+            use_serial_number = True
+
+    if rospy.has_param('~serial_port'):
         serial_port = rospy.get_param('~serial_port')
-        use_serial_number = False
-    else:
+        if not serial_port == "disable":
+            use_serial_port = True
+    
+    if not use_serial_number and not use_serial_port:
         rospy.logfatal("Please provide either serial_number or serial_port")
         exit()
+    
+    if use_serial_number and use_serial_port:
+        rospy.loginfo("Both Serial Number and Serial Port are provided, use Serial Number first")
+
+    if rospy.has_param('~quat_topic'):
+        quat_topic = rospy.get_param('~quat_topic')
 
     xsens = Xsens(ShowError=False)     # initial the imu class
 
     connect = False
     if use_serial_number:
+        rospy.loginfo("Try Connect to device using serial number")
         connect = xsens.ConnectWithSerialNumber(serial_number)
     else:
+        rospy.loginfo("Try Connect to device using serial port")
         connect = xsens.ConnectWithDeviceName(serial_port)
 
     if connect:
         threading.Thread(target=IMU_reader, args=(xsens,)).start()
 
         try:
-            publisher(xsens)
+            publisher(xsens, quat_topic)
         except rospy.ROSInterruptException:
             pass
     else:
