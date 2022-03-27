@@ -3,6 +3,7 @@
 from IMU import *
 import rospy
 from geometry_msgs.msg import QuaternionStamped
+from sensor_msgs.msg import Imu as ImuMSG
 import time
 import threading
 
@@ -18,18 +19,34 @@ def IMU_reader(xsens):
             s += str(time.time()) + " |Roll: %.2f" % (xsens.euler[0,0] * 180 / math.pi) + ", Pitch: %.2f" % (xsens.euler[0,1] * 180 / math.pi) + ", Yaw: %.2f " % (xsens.euler[0,2] * 180 / math.pi )
             print(s)
 
-def publisher(xsens, quat_topic):
+def publisher(xsens, quat_topic, imu_topic):
     quat_pub = rospy.Publisher(quat_topic, QuaternionStamped, queue_size=1)
+    imu_pub = rospy.Publisher(imu_topic, ImuMSG, queue_size=1)
     rate = rospy.Rate(30) # 30hz
 
     while not rospy.is_shutdown():
+        x, y, z, w = xsens.GetQuat()
+        # Publish Quat
         QuatStamped = QuaternionStamped()
         QuatStamped.header.stamp = rospy.Time.now()
-        QuatStamped.quaternion.w = xsens.quat[0]
-        QuatStamped.quaternion.x = xsens.quat[1]
-        QuatStamped.quaternion.y = xsens.quat[2]
-        QuatStamped.quaternion.z = xsens.quat[3]
+        QuatStamped.quaternion.w = w
+        QuatStamped.quaternion.x = x
+        QuatStamped.quaternion.y = y
+        QuatStamped.quaternion.z = z
         quat_pub.publish(QuatStamped)
+
+        # Publish IMU
+        IMU_msg = ImuMSG()
+        IMU_msg.header.stamp = rospy.Time.now()
+        IMU_msg.header.frame_id = imu_topic
+        IMU_msg.orientation.w = w
+        IMU_msg.orientation.x = x
+        IMU_msg.orientation.y = y
+        IMU_msg.orientation.z = z
+        IMU_msg.orientation_covariance = (-1., )*9
+        IMU_msg.angular_velocity_covariance = (-1., )*9
+        IMU_msg.linear_acceleration_covariance = (-1., )*9
+        imu_pub.publish(IMU_msg)
 
         rate.sleep()
 
@@ -40,6 +57,7 @@ if __name__ == "__main__":
     serial_number = ""
     serial_port = ""
     quat_topic = "/Quaternion"
+    imu_topic = "/IMU"
 
     use_serial_number = False
     use_serial_port = False
@@ -62,6 +80,9 @@ if __name__ == "__main__":
 
     if rospy.has_param('~quat_topic'):
         quat_topic = rospy.get_param('~quat_topic')
+    
+    if rospy.has_param('~imu_topic'):
+        imu_topic = rospy.get_param('~imu_topic')  
 
     xsens = Xsens(ShowError=False)     # initial the imu class
 
@@ -77,7 +98,7 @@ if __name__ == "__main__":
         threading.Thread(target=IMU_reader, args=(xsens,)).start()
 
         try:
-            publisher(xsens, quat_topic)
+            publisher(xsens, quat_topic, imu_topic)
         except rospy.ROSInterruptException:
             pass
     else:

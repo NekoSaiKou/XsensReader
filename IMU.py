@@ -266,3 +266,13 @@ class Xsens:
         siny_cosp = 2 * (w * z + x * y)
         cosy_cosp = 1 - 2 * (y * y + z * z)
         self.euler[0,2] = math.atan2(siny_cosp, cosy_cosp)
+
+    def GetQuat(self):
+        self.data_lock.acquire()
+        w = self.quat[0]
+        x = self.quat[1]
+        y = self.quat[2]
+        z = self.quat[3]
+        self.data_lock.release()
+
+        return x, y, z, w
