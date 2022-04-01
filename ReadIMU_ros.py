@@ -19,10 +19,10 @@ def IMU_reader(xsens):
             s += str(time.time()) + " |Roll: %.2f" % (xsens.euler[0,0] * 180 / math.pi) + ", Pitch: %.2f" % (xsens.euler[0,1] * 180 / math.pi) + ", Yaw: %.2f " % (xsens.euler[0,2] * 180 / math.pi )
             print(s)
 
-def publisher(xsens, quat_topic, imu_topic):
+def publisher(xsens, quat_topic, imu_topic, imu_frame, publish_rate):
     quat_pub = rospy.Publisher(quat_topic, QuaternionStamped, queue_size=1)
     imu_pub = rospy.Publisher(imu_topic, ImuMSG, queue_size=1)
-    rate = rospy.Rate(30) # 30hz
+    rate = rospy.Rate(publish_rate) # 30hz
 
     while not rospy.is_shutdown():
         x, y, z, w = xsens.GetQuat()
@@ -38,7 +38,7 @@ def publisher(xsens, quat_topic, imu_topic):
         # Publish IMU
         IMU_msg = ImuMSG()
         IMU_msg.header.stamp = rospy.Time.now()
-        IMU_msg.header.frame_id = imu_topic
+        IMU_msg.header.frame_id = imu_frame
         IMU_msg.orientation.w = w
         IMU_msg.orientation.x = x
         IMU_msg.orientation.y = y
@@ -58,6 +58,8 @@ if __name__ == "__main__":
     serial_port = ""
     quat_topic = "/Quaternion"
     imu_topic = "/IMU"
+    imu_frame = "IMU"
+    publish_rate = 30
 
     use_serial_number = False
     use_serial_port = False
@@ -84,6 +86,12 @@ if __name__ == "__main__":
     if rospy.has_param('~imu_topic'):
         imu_topic = rospy.get_param('~imu_topic')  
 
+    if rospy.has_param('~imu_frame'):
+        imu_frame = rospy.get_param('~imu_frame') 
+
+    if rospy.has_param('~publish_rate'):
+        publish_rate = rospy.get_param('~publish_rate') 
+
     xsens = Xsens(ShowError=False)     # initial the imu class
 
     connect = False
@@ -98,7 +106,7 @@ if __name__ == "__main__":
         threading.Thread(target=IMU_reader, args=(xsens,)).start()
 
         try:
-            publisher(xsens, quat_topic, imu_topic)
+            publisher(xsens, quat_topic, imu_topic, imu_frame, publish_rate)
         except rospy.ROSInterruptException:
             pass
     else:
