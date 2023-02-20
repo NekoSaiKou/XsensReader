@@ -20,10 +20,21 @@ class Xsens:
         self.newData = False
 
         # Data Processing
+        # Quaternion
         self.quat = numpy.zeros(shape=(4), dtype='float_')
-        self.quat_temp = ['']*4
-
         self.euler = numpy.zeros(shape=(1,3), dtype='float_')
+        self.quat_temp = ['']*4
+        
+        # Angular_Vel (Rate of Turn)
+        
+        self.angVel = numpy.zeros(shape=(3), dtype='float_')
+        self.angVel_temp = ['']*3
+        
+        # Acc
+
+        self.acc = numpy.zeros(shape=(3), dtype='float_')
+        self.acc_temp = ['']*3
+        
 
         self.len = 5    # Data length without MTData2 data field (Preamble, BID, MTData, LEN and Checksum)
         self.receivedBytes = ['']*self.len
@@ -220,14 +231,37 @@ class Xsens:
                     self.quat[3] = struct.unpack('<f', self.quat_temp[3])[0]
                 elif MtdataType == b'\x30':
                     pass
-                elif MtdataType == b'\x40':
-                    pass
+                elif MtdataType == b'\x40' and MtdataFormat == b'\x20' :
+                    
+                    #-----LINK BYTES-----
+                    Quat_Idx = MtdataMessageStart
+                    self.acc_temp[0] = b''.join(self.receivedBytes[Quat_Idx+3  : Quat_Idx-1:-1])   # 3  2  1  0
+                    self.acc_temp[1] = b''.join(self.receivedBytes[Quat_Idx+7  : Quat_Idx+3:-1])   # 7  6  5  4
+                    self.acc_temp[2] = b''.join(self.receivedBytes[Quat_Idx+11 : Quat_Idx+7:-1])   # 11 10 9  8
+                    
+                    #-----unpack data to float-----
+                    self.acc[0] = struct.unpack('<f', self.acc_temp[0])[0]
+                    self.acc[1] = struct.unpack('<f', self.acc_temp[1])[0]
+                    self.acc[2] = struct.unpack('<f', self.acc_temp[2])[0]
+                                   
+                    
                 elif MtdataType == b'\x50':
                     pass
                 elif MtdataType == b'\x70':
                     pass
-                elif MtdataType == b'\x80':
-                    pass
+                elif MtdataType == b'\x80' and MtdataFormat == b'\x20' :
+                    #-----LINK BYTES-----
+                    Quat_Idx = MtdataMessageStart
+                    self.angVel_temp[0] = b''.join(self.receivedBytes[Quat_Idx+3  : Quat_Idx-1:-1])   # 3  2  1  0
+                    self.angVel_temp[1] = b''.join(self.receivedBytes[Quat_Idx+7  : Quat_Idx+3:-1])   # 7  6  5  4
+                    self.angVel_temp[2] = b''.join(self.receivedBytes[Quat_Idx+11 : Quat_Idx+7:-1])   # 11 10 9  8
+                    
+                    #-----unpack data to float-----
+                    self.angVel[0] = struct.unpack('<f', self.angVel_temp[0])[0]
+                    self.angVel[1] = struct.unpack('<f', self.angVel_temp[1])[0]
+                    self.angVel[2] = struct.unpack('<f', self.angVel_temp[2])[0]
+                    
+            
                 elif MtdataType == b'\xA0':
                     pass
                 elif MtdataType == b'\xC0':
@@ -276,3 +310,22 @@ class Xsens:
         self.data_lock.release()
 
         return x, y, z, w
+
+    def GetAngVel(self):
+        self.data_lock.acquire()
+        ang_vel_x = self.angVel[0]
+        ang_vel_y = self.angVel[1]
+        ang_vel_z = self.angVel[2]
+        self.data_lock.release()
+        
+        return ang_vel_x,ang_vel_y,ang_vel_z
+
+    def GetAcc(self):
+        self.data_lock.acquire()
+        acc_x = self.acc[0]
+        acc_y = self.acc[1]
+        acc_z = self.acc[2]
+        self.data_lock.release()
+        
+        return acc_x,acc_y,acc_z
+        

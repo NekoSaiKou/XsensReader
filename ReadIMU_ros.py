@@ -12,12 +12,21 @@ def IMU_reader(xsens):
         xsens.GetMeasure()
         if xsens.NewDataAvailable() == True:
             xsens.MarkDataOld()
+            
+            angVel_x,angVel_y,angVel_z= xsens.GetAngVel()
+            s = ""
+            s += "Ang_Vel |X: %.2f" % angVel_x + ", y: %.2f" % angVel_y + ", z: %.2f " % angVel_z
+            print(s)
 
+            acc_x,acc_y,acc_z= xsens.GetAcc()
+            s = ""
+            s += "ACC: |X: %.2f" % acc_x + ", y: %.2f" % acc_y + ", z: %.2f " % acc_z
+            # print(s)
+            
             xsens.QuatToEuler ()
-
             s = ""
             s += str(time.time()) + " |Roll: %.2f" % (xsens.euler[0,0] * 180 / math.pi) + ", Pitch: %.2f" % (xsens.euler[0,1] * 180 / math.pi) + ", Yaw: %.2f " % (xsens.euler[0,2] * 180 / math.pi )
-            print(s)
+            # print(s)
 
 def publisher(xsens, quat_topic, imu_topic, imu_frame, publish_rate):
     quat_pub = rospy.Publisher(quat_topic, QuaternionStamped, queue_size=1)
@@ -26,6 +35,9 @@ def publisher(xsens, quat_topic, imu_topic, imu_frame, publish_rate):
 
     while not rospy.is_shutdown():
         x, y, z, w = xsens.GetQuat()
+        angVel_x,angVel_y,angVel_z= xsens.GetAngVel()
+        acc_x,acc_y,acc_z= xsens.GetAcc()
+
         # Publish Quat
         QuatStamped = QuaternionStamped()
         QuatStamped.header.stamp = rospy.Time.now()
@@ -35,6 +47,7 @@ def publisher(xsens, quat_topic, imu_topic, imu_frame, publish_rate):
         QuatStamped.quaternion.z = z
         quat_pub.publish(QuatStamped)
 
+        
         # Publish IMU
         IMU_msg = ImuMSG()
         IMU_msg.header.stamp = rospy.Time.now()
@@ -43,6 +56,15 @@ def publisher(xsens, quat_topic, imu_topic, imu_frame, publish_rate):
         IMU_msg.orientation.x = x
         IMU_msg.orientation.y = y
         IMU_msg.orientation.z = z
+        
+        IMU_msg.angular_velocity.x = angVel_x
+        IMU_msg.angular_velocity.y = angVel_y
+        IMU_msg.angular_velocity.z = angVel_z
+        
+        IMU_msg.linear_acceleration.x = acc_x
+        IMU_msg.linear_acceleration.y = acc_y
+        IMU_msg.linear_acceleration.z = acc_z
+        
         IMU_msg.orientation_covariance = (-1., )*9
         IMU_msg.angular_velocity_covariance = (-1., )*9
         IMU_msg.linear_acceleration_covariance = (-1., )*9
