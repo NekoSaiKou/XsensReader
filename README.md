@@ -62,3 +62,8 @@ rosrun xsens_sdk GetAvailableImu.py
 ### Publish Topic
 
 * geometry_msgs/QuaternionStamped
+"/Quaternion"
+
+* sensor_msgs/Imu
+"/IMU"
+(Quaternion, angular Velocity, linear Acceleration)
